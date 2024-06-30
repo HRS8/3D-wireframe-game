@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Game</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #collisionCount {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-size: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px;
+            border-radius: 5px;
+        }
+        #endMessage {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 50px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="collisionCount">Collisions left: 3</div>
+    <div id="endMessage">The End</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // Initialize Three.js scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Load the skybox textures
+        const loader = new THREE.CubeTextureLoader();
+        const skyboxTexture = loader.load([
+            'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/px.png',
+            'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/nx.png',
+            'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/py.png',
+            'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/ny.png',
+            'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/pz.png',
+            'https://devday2.s3.ap-south-1.amazonaws.com/CloudySky/nz.png'
+        ]);
+        scene.background = skyboxTexture;
+
+        // Create platform
+        const platformGeometry = new THREE.BoxGeometry(10, 1, 10);
+        const platformMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
+        const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+        scene.add(platform);
+
+        // Create player (blue cube)
+        const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        player.position.y = 1;
+        scene.add(player);
+
+        // Create enemy (red cube)
+        const enemyGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const enemyMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        let enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+        scene.add(enemy);
+
+        // Set camera position
+        camera.position.z = 15;
+        camera.position.y = 15; // Set the camera position higher
+        camera.lookAt(0, 0, 0);
+
+        // Player movement variables
+        let jump = false;
+        let isGrounded = true;
+        let velocityY = 0;
+        const jumpStrength = 0.3; // Decreased jump strength
+        const gravity = 0.01;
+
+        // Variables for enemy movement
+        let enemySpeed = 0.05;
+
+        // Collision count
+        let collisionsLeft = 3;
+        const collisionCountElement = document.getElementById('collisionCount');
+        const endMessageElement = document.getElementById('endMessage');
+        let isColliding = false; // Flag to track collision state
+
+        // Spawn enemy at center of the left side of the platform
+        function spawnEnemy() {
+            enemy.position.set(
+                -5,   // X position (center of the left side of the platform)
+                0.5,  // Y position (slightly above the platform)
+                0     // Z position (center of the side)
+            );
+            enemySpeed = Math.random() * 0.05 + 0.05; // Randomize speed between 0.05 and 0.1
+        }
+
+        // Check for collision
+        function checkCollision() {
+            const playerBox = new THREE.Box3().setFromObject(player);
+            const enemyBox = new THREE.Box3().setFromObject(enemy);
+            return playerBox.intersectsBox(enemyBox);
+        }
+
+        // Game loop
+        function animate() {
+            if (collisionsLeft > 0) {
+                requestAnimationFrame(animate);
+            }
+
+            // Handle jump
+            if (jump && isGrounded) {
+                velocityY = jumpStrength;
+                isGrounded = false;
+            }
+
+            // Apply gravity
+            if (!isGrounded) {
+                player.position.y += velocityY;
+                velocityY -= gravity;
+                if (player.position.y <= 1) {
+                    player.position.y = 1;
+                    isGrounded = true;
+                    velocityY = 0;
+                }
+            }
+
+            // Move enemy across the platform
+            enemy.position.x += enemySpeed;
+            if (enemy.position.x > 5) {
+                // Reset enemy position to the starting point
+                spawnEnemy();
+            }
+
+            // Check for collision
+            if (checkCollision()) {
+                if (!isColliding) {
+                    collisionsLeft--;
+                    collisionCountElement.textContent = `Collisions left: ${collisionsLeft}`;
+                    isColliding = true;
+
+                    if (collisionsLeft <= 0) {
+                        endMessageElement.style.display = 'block';
+                    }
+                }
+            } else {
+                isColliding = false;
+            }
+
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+
+        // Listen for keyboard input
+        window.addEventListener('keydown', (event) => {
+            if (event.code === 'Space' && isGrounded) {
+                jump = true;
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            if (event.code === 'Space') {
+                jump = false;
+            }
+        });
+
+        // Add mouse movement controls
+        let mouseX = 0, mouseY = 0;
+        const windowHalfX = window.innerWidth / 2;
+        const windowHalfY = window.innerHeight / 2;
+
+        document.addEventListener('mousemove', (event) => {
+            mouseX = (event.clientX - windowHalfX) / windowHalfX;
+            mouseY = (event.clientY - windowHalfY) / windowHalfY;
+        });
+
+        function updateCamera() {
+            camera.position.x += (mouseX * 10 - camera.position.x) * 0.05;
+            camera.position.y += (-mouseY * 10 - camera.position.y) * 0.05;
+            camera.lookAt(scene.position);
+        }
+
+        // Initial enemy spawn
+        spawnEnemy();
+        animate();
+
+        // Update camera position in the animation loop
+        function animate() {
+            if (collisionsLeft > 0) {
+                requestAnimationFrame(animate);
+            }
+
+            // Handle jump
+            if (jump && isGrounded) {
+                velocityY = jumpStrength;
+                isGrounded = false;
+            }
+
+            // Apply gravity
+            if (!isGrounded) {
+                player.position.y += velocityY;
+                velocityY -= gravity;
+                if (player.position.y <= 1) {
+                    player.position.y = 1;
+                    isGrounded = true;
+                    velocityY = 0;
+                }
+            }
+
+            // Move enemy across the platform
+            enemy.position.x += enemySpeed;
+            if (enemy.position.x > 5) {
+                // Reset enemy position to the starting point
+                spawnEnemy();
+            }
+
+            // Check for collision
+            if (checkCollision()) {
+                if (!isColliding) {
+                    collisionsLeft--;
+                    collisionCountElement.textContent = `Collisions left: ${collisionsLeft}`;
+                    isColliding = true;
+
+                    if (collisionsLeft <= 0) {
+                        endMessageElement.style.display = 'block';
+                    }
+                }
+            } else {
+                isColliding = false;
+            }
+
+            updateCamera();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
